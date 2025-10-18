@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "package.json", "use": "@vercel/static-build" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "https://club-attendance.com/api/$1" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ],
+  "headers": [
+    { 
+      "source": "/(.*)", 
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
+  ],
+  "env": {
+    "VITE_API_URL": "https://club-attendance.com/api"
+  },
+  "build": {
+    "env": {
+      "VITE_API_URL": "https://club-attendance.com/api"
+    }
+  },
+  "preview": {
+    "env": {
+      "VITE_API_URL": "https://staging.clubattendance.example/api"
+    }
+  }
+}

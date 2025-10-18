@@ -1,0 +1,1 @@
+# See original Club attendance manager for details

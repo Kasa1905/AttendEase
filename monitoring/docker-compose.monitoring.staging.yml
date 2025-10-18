@@ -1,0 +1,163 @@
+version: '3.8'
+
+networks:
+  monitoring:
+    name: monitoring
+  appnet:
+    external: true
+
+volumes:
+  prometheus_data: {}
+  grafana_data: {}
+  loki_data: {}
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.42.0
+    container_name: prometheus-staging
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./prometheus-staging.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+      - appnet
+    labels:
+      - "environment=staging"
+
+  grafana:
+    image: grafana/grafana:9.4.3
+    container_name: grafana-staging
+    restart: unless-stopped
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana-staging-dashboards.json:/etc/grafana/provisioning/dashboards/dashboards.json
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    ports:
+      - "3100:3000"  # Changed from 3000:3000 to avoid conflict with frontend
+    networks:
+      - monitoring
+    labels:
+      - "environment=staging"
+
+  loki:
+    image: grafana/loki:2.8.0
+    container_name: loki-staging
+    restart: unless-stopped
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - ./loki-staging-config.yaml:/etc/loki/config.yml
+      - ./loki-rules:/loki/rules
+      - loki_data:/loki
+    ports:
+      - "3101:3100"  # Changed from 3100:3100 to avoid conflict
+    networks:
+      - monitoring
+    labels:
+      - "environment=staging"
+
+  promtail:
+    image: grafana/promtail:2.8.0
+    container_name: promtail-staging
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./promtail-staging-config.yaml:/etc/promtail/config.yml
+      - /var/log:/var/log
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - monitoring
+    labels:
+      - "environment=staging"
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.12.0
+    container_name: postgres-exporter-staging
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/club_attendance_staging?sslmode=disable
+    restart: unless-stopped
+    ports:
+      - "9187:9187"
+    networks:
+      - monitoring
+      - appnet
+    labels:
+      - "environment=staging"
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.45.0
+    container_name: redis-exporter-staging
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    networks:
+      - monitoring
+      - appnet
+    labels:
+      - "environment=staging"
+
+  node-exporter:
+    image: prom/node-exporter:v1.5.0
+    container_name: node-exporter-staging
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+    networks:
+      - monitoring
+    labels:
+      - "environment=staging"
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:0.11.0
+    container_name: nginx-exporter-staging
+    restart: unless-stopped
+    command:
+      - '-nginx.scrape-uri=http://nginx/nginx_status'
+    ports:
+      - "9113:9113"
+    networks:
+      - monitoring
+      - appnet
+    labels:
+      - "environment=staging"
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.23.0
+    container_name: blackbox-exporter-staging
+    restart: unless-stopped
+    volumes:
+      - ./blackbox.yml:/config/blackbox.yml
+    command:
+      - '--config.file=/config/blackbox.yml'
+    ports:
+      - "9115:9115"
+    networks:
+      - monitoring
+      - appnet
+    labels:
+      - "environment=staging"

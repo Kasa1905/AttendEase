@@ -1,0 +1,144 @@
+groups:
+- name: club-attendance-alerts
+  rules:
+  # System availability alerts
+  - alert: BackendDown
+    expr: up{job="backend"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Backend service down"
+      description: "The backend service has been down for more than 1 minute."
+
+  - alert: DatabaseDown
+    expr: up{job="db"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Database service down"
+      description: "The PostgreSQL database has been down for more than 1 minute."
+
+  # API performance alerts
+  - alert: HighAPIResponseTime
+    expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="backend"}[5m])) by (le, route, method)) > 2
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High API response time"
+      description: "95th percentile response time for {{ $labels.method }} {{ $labels.route }} is above 2 seconds for more than 5 minutes."
+
+  - alert: HighErrorRate
+    expr: sum(rate(http_request_duration_seconds_count{job="backend", status_code=~"5.."}[5m])) / sum(rate(http_request_duration_seconds_count{job="backend"}[5m])) > 0.05
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High API error rate"
+      description: "More than 5% of API requests are resulting in server errors (5xx) over the last 5 minutes."
+
+  # System resource alerts
+  - alert: HighCPUUsage
+    expr: avg by(instance) (rate(node_cpu_seconds_total{job="backend",mode!="idle"}[5m])) * 100 > 85
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High CPU usage"
+      description: "CPU usage has been above 85% for more than 5 minutes on {{ $labels.instance }}."
+
+  - alert: HighMemoryUsage
+    expr: (node_memory_MemTotal_bytes{job="backend"} - node_memory_MemFree_bytes{job="backend"} - node_memory_Buffers_bytes{job="backend"} - node_memory_Cached_bytes{job="backend"}) / node_memory_MemTotal_bytes{job="backend"} * 100 > 90
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High memory usage"
+      description: "Memory usage has been above 90% for more than 5 minutes on {{ $labels.instance }}."
+
+  - alert: LowDiskSpace
+    expr: (node_filesystem_size_bytes{fstype!="tmpfs",job="backend"} - node_filesystem_free_bytes{fstype!="tmpfs",job="backend"}) / node_filesystem_size_bytes{fstype!="tmpfs",job="backend"} * 100 > 85
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Low disk space"
+      description: "Disk usage is above 85% for more than 5 minutes on {{ $labels.instance }} mount point {{ $labels.mountpoint }}."
+
+  # Database alerts
+  - alert: HighDatabaseLatency
+    expr: histogram_quantile(0.95, sum(rate(db_query_duration_seconds_bucket{job="backend"}[5m])) by (le, query_name)) > 0.5
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High database query latency"
+      description: "95th percentile latency for {{ $labels.query_name }} is above 500ms for more than 5 minutes."
+
+  - alert: DatabaseConnectionPoolSaturation
+    expr: sum(db_pool_used{job="backend"}) / sum(db_pool_max{job="backend"}) > 0.8
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Database connection pool saturation"
+      description: "Database connection pool usage is above 80% for more than 5 minutes."
+
+  # Backup alerts
+  - alert: BackupTooOld
+    expr: backup_age_seconds > 86400
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: "Backup is too old"
+      description: "The most recent backup is more than 24 hours old."
+
+  - alert: BackupValidationFailed
+    expr: backup_validation_success == 0
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: "Backup validation failed"
+      description: "The most recent backup validation has failed."
+
+  # Node.js specific alerts
+  - alert: HighEventLoopLag
+    expr: nodejs_eventloop_lag_seconds{job="backend"} > 0.1
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High Node.js event loop lag"
+      description: "Event loop lag is above 100ms for more than 1 minute on {{ $labels.instance }}."
+
+  - alert: HighGCDuration
+    expr: rate(nodejs_gc_duration_seconds_sum{job="backend"}[5m]) / rate(nodejs_gc_duration_seconds_count{job="backend"}[5m]) > 0.1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High garbage collection time"
+      description: "Garbage collection is taking more than 100ms on average for {{ $labels.gc_type }} on {{ $labels.instance }}."
+
+  # Business alerts
+  - alert: LowAttendanceRecording
+    expr: sum(increase(business_metrics_attendance_recorded_total[24h])) < 10
+    for: 1h
+    labels:
+      severity: info
+    annotations:
+      summary: "Low attendance recording activity"
+      description: "Less than 10 attendance records in the last 24 hours, which might indicate an issue with the attendance system."
+
+  - alert: UnusualAuthFailures
+    expr: sum(increase(auth_failures_total{job="backend"}[1h])) > 10
+    for: 15m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Unusual number of authentication failures"
+      description: "More than 10 authentication failures in the last hour, which could indicate a security issue."

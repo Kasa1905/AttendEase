@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Club Attendance Manager</title>
+    <link rel="icon" href="/favicon.ico" />
+
+    <!-- PWA and offline app capabilities -->
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="description" content="Club Attendance Manager - Track attendance, duty sessions, and hourly logs" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Preload critical resources -->
+    <link rel="preload" href="/static/js/bundle.js" as="script" />
+    <link rel="preload" href="/static/css/main.css" as="style" />
+
+    <!-- Offline functionality styles -->
+    <style>
+      .offline-indicator {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #dc2626;
+        color: white;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 14px;
+        display: none;
+        z-index: 1000;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      }
+      .offline-indicator.online {
+        background: #16a34a;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- Offline status indicator -->
+    <div id="offline-indicator" class="offline-indicator">
+      <span id="offline-text">Offline Mode</span>
+    </div>
+
+    <script type="module" src="/src/index.js"></script>
+
+    <!-- Service worker registration and offline initialization -->
+    <script>
+      // Service worker registration
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js')
+            .then(function(registration) {
+              console.log('Service Worker registered successfully:', registration.scope);
+
+              // Handle service worker updates
+              registration.addEventListener('updatefound', function() {
+                const newWorker = registration.installing;
+                if (newWorker) {
+                  newWorker.addEventListener('statechange', function() {
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                      // New service worker available
+                      showUpdateNotification();
+                    }
+                  });
+                }
+              });
+
+              // Listen for service worker messages
+              navigator.serviceWorker.addEventListener('message', function(event) {
+                handleServiceWorkerMessage(event);
+              });
+            })
+            .catch(function(error) {
+              console.error('Service Worker registration failed:', error);
+            });
+        });
+      } else {
+        console.warn('Service Workers not supported in this browser');
+      }
+
+      // Offline status detection and UI updates
+      function updateOfflineStatus() {
+        const indicator = document.getElementById('offline-indicator');
+        const text = document.getElementById('offline-text');
+
+        if (!navigator.onLine) {
+          indicator.style.display = 'block';
+          text.textContent = 'Offline Mode';
+          indicator.classList.remove('online');
+        } else {
+          indicator.style.display = 'none';
+          text.textContent = 'Back Online';
+          indicator.classList.add('online');
+
+          // Hide after 3 seconds when back online
+          setTimeout(() => {
+            indicator.style.display = 'none';
+          }, 3000);
+        }
+      }
+
+      // Listen for online/offline events
+      window.addEventListener('online', updateOfflineStatus);
+      window.addEventListener('offline', updateOfflineStatus);
+
+      // Initial status check
+      updateOfflineStatus();
+
+      // Handle service worker messages
+      function handleServiceWorkerMessage(event) {
+        const { type, data } = event.data;
+
+        switch (type) {
+          case 'ONLINE_STATUS_CHANGE':
+            updateOfflineStatus();
+            break;
+          case 'CACHE_UPDATED':
+            console.log('Cache updated:', data);
+            break;
+          case 'BACKGROUND_SYNC_COMPLETE':
+            showSyncNotification(data);
+            break;
+          default:
+            break;
+        }
+      }
+
+      // Show update notification
+      function showUpdateNotification() {
+        // Create a simple notification for service worker updates
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: #2563eb;
+          color: white;
+          padding: 12px 16px;
+          border-radius: 6px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+          z-index: 1001;
+          cursor: pointer;
+        `;
+        notification.innerHTML = 'App updated! Click to reload.';
+        notification.onclick = () => window.location.reload();
+
+        document.body.appendChild(notification);
+
+        // Auto-remove after 10 seconds
+        setTimeout(() => {
+          if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+          }
+        }, 10000);
+      }
+
+      // Show sync completion notification
+      function showSyncNotification(data) {
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: #16a34a;
+          color: white;
+          padding: 12px 16px;
+          border-radius: 6px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+          z-index: 1001;
+        `;
+        notification.textContent = 'Offline data synchronized!';
+
+        document.body.appendChild(notification);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+          if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+          }
+        }, 5000);
+      }
+
+      // Initialize offline functionality
+      window.offlineInitialized = true;
+    </script>
+  </body>
+</html>

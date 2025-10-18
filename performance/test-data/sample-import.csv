@@ -1,0 +1,26 @@
+studentId,date,status,notes
+ST001,2024-01-15,present,Regular attendance
+ST002,2024-01-15,absent,Medical leave
+ST003,2024-01-15,present,Regular attendance
+ST004,2024-01-15,present,Regular attendance
+ST005,2024-01-15,late,Arrived 15 minutes late
+ST006,2024-01-15,present,Regular attendance
+ST007,2024-01-15,absent,Personal leave
+ST008,2024-01-15,present,Regular attendance
+ST009,2024-01-15,present,Regular attendance
+ST010,2024-01-15,present,Regular attendance
+ST011,2024-01-15,present,Regular attendance
+ST012,2024-01-15,absent,Family emergency
+ST013,2024-01-15,late,Traffic delay
+ST014,2024-01-15,present,Regular attendance
+ST015,2024-01-15,present,Regular attendance
+ST001,2024-01-16,present,Regular attendance
+ST002,2024-01-16,present,Returned from leave
+ST003,2024-01-16,present,Regular attendance
+ST004,2024-01-16,absent,Sick leave
+ST005,2024-01-16,present,Regular attendance
+ST006,2024-01-16,present,Regular attendance
+ST007,2024-01-16,present,Regular attendance
+ST008,2024-01-16,late,Bus delay
+ST009,2024-01-16,present,Regular attendance
+ST010,2024-01-16,present,Regular attendance

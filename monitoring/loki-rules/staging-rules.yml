@@ -1,0 +1,32 @@
+groups:
+  - name: staging_alerts
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum by (job) (
+            rate({environment="staging", level="error"}[5m])
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          environment: staging
+        annotations:
+          summary: High error rate detected in {{ $labels.job }}
+          description: "Error rate is above 5% in {{ $labels.job }} over the last 5 minutes."
+
+      - alert: LogVolumeSurge
+        expr: |
+          sum by (job) (
+            rate({environment="staging"}[5m])
+          ) > 2 * avg_over_time(
+            sum by (job) (
+              rate({environment="staging"}[5m])
+            )[1h:5m]
+          )
+        for: 5m
+        labels:
+          severity: warning
+          environment: staging
+        annotations:
+          summary: Log volume surge in {{ $labels.job }}
+          description: "Log volume has increased significantly in {{ $labels.job }} compared to the last hour."

@@ -1,0 +1,266 @@
+config:
+  target: 'http://localhost:5000'
+  phases:
+    # Warm-up phase
+    - duration: 60
+      arrivalRate: 2
+      name: "Warm up"
+    
+    # Load testing phases
+    - duration: 120
+      arrivalRate: 5
+      name: "Light load"
+    
+    - duration: 120
+      arrivalRate: 10
+      name: "Medium load"
+    
+    - duration: 60
+      arrivalRate: 20
+      name: "Heavy load"
+    
+    # Spike testing
+    - duration: 30
+      arrivalRate: 50
+      name: "Spike test"
+    
+    # Cool down
+    - duration: 60
+      arrivalRate: 2
+      name: "Cool down"
+
+  variables:
+    studentEmail: "student@test.com"
+    coreTeamEmail: "coreteam@test.com" 
+    teacherEmail: "teacher@test.com"
+    testPassword: "password123"
+
+  processor: "./performance/artillery-processor.js"
+
+scenarios:
+  # Authentication Load Tests
+  - name: "Student Login Flow"
+    weight: 30
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ studentEmail }}"
+            password: "{{ testPassword }}"
+          capture:
+            - json: "$.data.tokens.accessToken"
+              as: "accessToken"
+      - get:
+          url: "/api/users/profile"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+
+  - name: "Core Team Login Flow"
+    weight: 20
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ coreTeamEmail }}"
+            password: "{{ testPassword }}"
+          capture:
+            - json: "$.data.tokens.accessToken"
+              as: "accessToken"
+      - get:
+          url: "/api/users/members"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+
+  # Attendance API Load Tests  
+  - name: "Mark Attendance"
+    weight: 25
+    flow:
+      - function: "authenticateStudent"
+      - post:
+          url: "/api/attendance"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+          json:
+            type: "present_in_class"
+            eventId: "{{ eventId }}"
+            notes: "Load test attendance marking"
+
+  - name: "Duty Session Management"
+    weight: 15
+    flow:
+      - function: "authenticateStudent"
+      - post:
+          url: "/api/duty-sessions"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+          json:
+            type: "start"
+            notes: "Starting duty session for load test"
+          capture:
+            - json: "$.data.sessionId"
+              as: "sessionId"
+      - post:
+          url: "/api/hourly-logs"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+          json:
+            sessionId: "{{ sessionId }}"
+            previousWork: "Load testing activities"
+            nextPlan: "Continue load testing"
+
+  # CRUD Operations Load Tests
+  - name: "User Management"
+    weight: 10
+    flow:
+      - function: "authenticateCoreTeam"
+      - get:
+          url: "/api/users"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+      - get:
+          url: "/api/users/{{ userId }}"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+
+  - name: "Reports Generation"
+    weight: 15
+    flow:
+      - function: "authenticateCoreTeam"
+      - post:
+          url: "/api/reports/generate"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+          json:
+            type: "attendance-summary"
+            startDate: "2024-01-01"
+            endDate: "2024-12-31"
+            format: "json"
+
+  # Real-time Performance Tests
+  - name: "Socket.io Connection Test"
+    weight: 10
+    flow:
+      - function: "authenticateStudent"
+      - function: "connectSocket"
+      - think: 5
+      - function: "emitSocketEvent"
+      - function: "disconnectSocket"
+
+  # File Upload Load Tests
+  - name: "File Upload Stress Test"
+    weight: 5
+    flow:
+      - function: "authenticateCoreTeam"
+      - post:
+          url: "/api/users/import"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+          formData:
+            file: "@./performance/test-data/sample-import.csv"
+          capture:
+            - json: "$.data.importId"
+              as: "importId"
+      - get:
+          url: "/api/users/import/{{ importId }}/status"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+
+# Performance Monitoring and Assertions
+before:
+  flow:
+    - log: "Starting Artillery load test"
+    - function: "setupTestData"
+
+after:
+  flow:
+    - log: "Artillery load test completed"
+    - function: "cleanupTestData"
+
+# Performance thresholds and expectations
+expect:
+  # Response time thresholds (95th percentile)
+  - response-time-p95: 2000  # 2 seconds
+  - response-time-p99: 5000  # 5 seconds
+  
+  # Success rate expectations
+  - success-rate: 95  # 95% success rate minimum
+  
+  # Specific endpoint thresholds
+  - endpoint: "/api/auth/login"
+    response-time-p95: 1000  # Login should be fast
+  
+  - endpoint: "/api/attendance"
+    response-time-p95: 1500  # Attendance marking
+  
+  - endpoint: "/api/reports/generate"
+    response-time-p95: 5000  # Reports can be slower
+
+# Resource monitoring
+plugins:
+  metrics-by-endpoint:
+    useOnlyRequestNames: true
+  
+  publish-metrics:
+    - type: "statsd"
+      host: "localhost"
+      port: 8125
+      prefix: "artillery.club-attendance"
+
+# Custom metrics collection
+metrics:
+  custom:
+    authentication_time:
+      unit: "milliseconds"
+      aggregation: "avg"
+    
+    database_query_time:
+      unit: "milliseconds"
+      aggregation: "p95"
+    
+    file_upload_throughput:
+      unit: "bytes_per_second"
+      aggregation: "avg"
+    
+    concurrent_sessions:
+      unit: "count"
+      aggregation: "max"
+
+# Error handling and debugging
+http:
+  timeout: 30
+  pool: 50  # Connection pool size
+  maxSockets: 50
+
+# Test data and fixtures
+payload:
+  path: "./performance/test-data/users.csv"
+  fields:
+    - "firstName"
+    - "lastName" 
+    - "email"
+    - "department"
+    - "year"
+  order: "sequence"
+  skipHeader: true
+
+# Environment-specific configurations
+environments:
+  development:
+    target: 'http://localhost:5000'
+    phases:
+      - duration: 60
+        arrivalRate: 5
+  
+  staging:
+    target: 'https://staging.clubattendance.example'
+    phases:
+      - duration: 300
+        arrivalRate: 10
+  
+  production:
+    target: 'https://club-attendance.com'
+    phases:
+      - duration: 600
+        arrivalRate: 25
+    tls:
+      rejectUnauthorized: true

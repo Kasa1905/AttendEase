@@ -1,0 +1,21 @@
+name,email,role,phone,studentId
+John Doe,john.doe@example.com,student,1234567890,ST001
+Jane Smith,jane.smith@example.com,student,2345678901,ST002
+Bob Johnson,bob.johnson@example.com,coreTeam,3456789012,CT001
+Alice Williams,alice.williams@example.com,student,4567890123,ST003
+Michael Brown,michael.brown@example.com,student,5678901234,ST004
+Sarah Davis,sarah.davis@example.com,teacher,6789012345,T001
+David Miller,david.miller@example.com,student,7890123456,ST005
+Lisa Wilson,lisa.wilson@example.com,student,8901234567,ST006
+Robert Moore,robert.moore@example.com,student,9012345678,ST007
+Jennifer Taylor,jennifer.taylor@example.com,student,0123456789,ST008
+Thomas Anderson,thomas.anderson@example.com,coreTeam,1122334455,CT002
+Emily White,emily.white@example.com,student,2233445566,ST009
+Christopher Lee,christopher.lee@example.com,teacher,3344556677,T002
+Olivia Harris,olivia.harris@example.com,student,4455667788,ST010
+Daniel Martin,daniel.martin@example.com,student,5566778899,ST011
+Sophia Thompson,sophia.thompson@example.com,student,6677889900,ST012
+Matthew Garcia,matthew.garcia@example.com,student,7788990011,ST013
+Emma Martinez,emma.martinez@example.com,student,8899001122,ST014
+Andrew Robinson,andrew.robinson@example.com,student,9900112233,ST015
+Abigail Clark,abigail.clark@example.com,coreTeam,0011223344,CT003

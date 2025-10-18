@@ -1,5 +1,7 @@
 # AttendEase — Club Attendance Management System
 
+[![CI](https://github.com/Kasa1905/AttendEase/actions/workflows/ci.yml/badge.svg)](https://github.com/Kasa1905/AttendEase/actions/workflows/ci.yml)
+
 AttendEase helps clubs and student organizations manage events, track attendance, monitor duty sessions, handle leave requests, and generate reports with ease. It includes a modern React frontend and a Node.js/Express backend with PostgreSQL, plus monitoring, E2E testing, and deployment tooling.
 
 Repository: https://github.com/Kasa1905/AttendEase
@@ -73,6 +75,22 @@ cd frontend && npm install
 # backend uses Node + Sequelize; install from top-level if package.json exists.
 # If backend has its own package.json, run:
 # cd ../backend && npm install
+```
+
+### Getting Started (TL;DR)
+```
+# 1) API
+cd backend
+cp .env.example .env   # set DATABASE_URL, JWT secrets
+npm install            # if package.json exists here
+# run migrations if configured (example): npx sequelize-cli db:migrate
+npm run dev            # or: node app.js
+
+# 2) Frontend
+cd ../frontend
+cp .env.example .env   # set VITE_API_URL
+npm ci
+npm run dev            # http://localhost:5173
 ```
 
 ### 3) Database setup

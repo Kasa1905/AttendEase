@@ -152,11 +152,15 @@ expect.extend({
 const originalError = console.error;
 beforeAll(() => {
   console.error = (...args) => {
+    const errorMsg = typeof args[0] === 'string' ? args[0] : String(args[0]);
+    
+    // Suppress known non-critical errors during tests
     if (
-      typeof args[0] === 'string' && (
-        args[0].includes('Warning: ReactDOM.render is deprecated') ||
-        args[0].includes('Warning: An update to') && args[0].includes('was not wrapped in act')
-      )
+      errorMsg.includes('Warning: ReactDOM.render is deprecated') ||
+      errorMsg.includes('Warning: An update to') && errorMsg.includes('was not wrapped in act') ||
+      errorMsg.includes('Network Error') || // axios network errors from unmocked requests
+      errorMsg.includes('AggregateError') || // jsdom aggregate errors from unmocked requests
+      errorMsg.includes('Failed to load') // component fetch errors
     ) {
       return;
     }

@@ -1,7 +1,7 @@
 // Client-side report generation utilities
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 
 // PDF Generation Utilities
@@ -47,25 +47,33 @@ export const generateClientPDF = (data, reportType, title) => {
 };
 
 // Excel Generation Utilities
-export const generateClientExcel = (data, reportType, title) => {
+export const generateClientExcel = async (data, reportType, title) => {
   if (!data || data.length === 0) {
     throw new Error('No data available for Excel generation');
   }
 
-  // Create workbook
-  const wb = XLSX.utils.book_new();
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet(title || 'Report');
 
-  // Create worksheet
-  const ws = XLSX.utils.json_to_sheet(data);
-
-  // Add worksheet to workbook
-  XLSX.utils.book_append_sheet(wb, ws, title);
+  const headers = Object.keys(data[0]);
+  worksheet.columns = headers.map(header => ({ header, key: header }));
+  data.forEach(row => {
+    const normalizedRow = headers.reduce((acc, header) => {
+      acc[header] = row[header] ?? '';
+      return acc;
+    }, {});
+    worksheet.addRow(normalizedRow);
+  });
 
   // Generate filename
   const filename = `${reportType}-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
   // Save the file
-  XLSX.writeFile(wb, filename);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
+  saveAs(blob, filename);
 
   return filename;
 };

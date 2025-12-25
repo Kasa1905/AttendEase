@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/react';
-import { BrowserTracing } from '@sentry/react';
+import { browserTracingIntegration } from '@sentry/react';
 
 /**
  * Sentry Service for error tracking and performance monitoring
@@ -38,10 +38,7 @@ class SentryService {
     Sentry.init({
       dsn,
       integrations: [
-        new BrowserTracing({
-          // Correct way to initialize React Router V6 instrumentation
-          routingInstrumentation: Sentry.reactRouterV6Instrumentation(history)
-        }),
+        browserTracingIntegration(),
         ...integrations
       ],
       tracesSampleRate,
@@ -66,19 +63,16 @@ class SentryService {
    */
   setUser(user) {
     if (!user) {
-      Sentry.configureScope((scope) => scope.setUser(null));
+      Sentry.setUser(null);
       return;
     }
 
     const { id, email, username, role } = user;
-    
-    Sentry.configureScope((scope) => {
-      scope.setUser({
-        id,
-        email,
-        username,
-        role,
-      });
+    Sentry.setUser({
+      id,
+      email,
+      username,
+      role,
     });
   }
 
@@ -86,7 +80,7 @@ class SentryService {
    * Clear user information
    */
   clearUser() {
-    Sentry.configureScope((scope) => scope.setUser(null));
+    Sentry.setUser(null);
   }
 
   /**
@@ -140,7 +134,7 @@ class SentryService {
    * @returns {Transaction} - Sentry transaction object
    */
   startTransaction(name, op = 'ui.action') {
-    return Sentry.startTransaction({ name, op });
+    return Sentry.startSpan({ name, op });
   }
 
   /**

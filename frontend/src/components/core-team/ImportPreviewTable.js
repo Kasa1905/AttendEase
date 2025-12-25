@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import PropTypes from 'prop-types';
-import StatusCard from './StatusCard';
+import StatusCard from '../common/StatusCard';
 
 const ImportPreviewTable = ({
   data,

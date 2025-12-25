@@ -1,10 +1,27 @@
 import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import { transformSync } from 'esbuild';
+import react from '@vitejs/plugin-react-swc';
 import { sentryVitePlugin } from "@sentry/vite-plugin";
+
+const jsxInJsPlugin = {
+  name: 'jsx-in-js',
+  enforce: 'pre',
+  transform(code, id) {
+    if (!id.endsWith('.js') || id.includes('node_modules')) return null;
+    return transformSync(code, {
+      loader: 'jsx',
+      jsx: 'automatic',
+      sourcemap: true
+    });
+  }
+};
 
 export default defineConfig({
   plugins: [
-    react(),
+    jsxInJsPlugin,
+    react({
+      include: [/\.(j|t)sx?$/]
+    }),
     // Sentry source map upload (only in production)
     process.env.NODE_ENV === 'production' && sentryVitePlugin({
       org: process.env.SENTRY_ORG || "club-attendance-manager",
@@ -15,7 +32,7 @@ export default defineConfig({
       },
     }),
   ].filter(Boolean),
-  
+
   build: {
     sourcemap: true, // Source maps for Sentry
     rollupOptions: {
@@ -28,7 +45,7 @@ export default defineConfig({
       },
     },
   },
-  
+
   server: {
     port: 5173,
     host: true,

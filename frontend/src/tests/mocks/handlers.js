@@ -1,4 +1,4 @@
-import { rest } from 'msw';
+import { http, HttpResponse } from 'msw';
 import { API_BASE } from '../../config/env';
 // Use plain path base so test-specific server.use("/api/…") handlers override predictably
 const BASE_RAW = API_BASE || '/api';
@@ -118,41 +118,32 @@ let currentUser = null;
 
 export const handlers = [
   // Authentication endpoints
-  rest.post(`${BASE}/auth/login`, (req, res, ctx) => {
-    const { username, password } = req.body;
+  http.post(`${BASE}/auth/login`, async ({ request }) => {
+    const { username, password } = await request.json();
     
     const user = mockUsers.find(u => u.username === username);
     
     if (!user) {
-      return res(
-        ctx.status(401),
-        ctx.json({ message: 'Invalid credentials' })
-      );
+      return HttpResponse.json({ message: 'Invalid credentials' }, { status: 401 });
     }
     
     // Mock password validation (in real app this would be hashed)
     if (password !== 'password123') {
-      return res(
-        ctx.status(401),
-        ctx.json({ message: 'Invalid credentials' })
-      );
+      return HttpResponse.json({ message: 'Invalid credentials' }, { status: 401 });
     }
     
     mockAuthToken = `mock-token-${user.id}-${Date.now()}`;
     currentUser = user;
     
-    return res(
-      ctx.status(200),
-      ctx.json({
-        user,
-        token: mockAuthToken,
-        message: 'Login successful'
-      })
-    );
+    return HttpResponse.json({
+      user,
+      token: mockAuthToken,
+      message: 'Login successful'
+    });
   }),
 
-  rest.post(`${BASE}/auth/register`, (req, res, ctx) => {
-    const userData = req.body;
+  http.post(`${BASE}/auth/register`, async ({ request }) => {
+    const userData = await request.json();
     
     // Check if user already exists
     const existingUser = mockUsers.find(u => 
@@ -160,10 +151,7 @@ export const handlers = [
     );
     
     if (existingUser) {
-      return res(
-        ctx.status(409),
-        ctx.json({ message: 'User already exists' })
-      );
+      return HttpResponse.json({ message: 'User already exists' }, { status: 409 });
     }
     
     const newUser = {
@@ -175,44 +163,32 @@ export const handlers = [
     
     mockUsers.push(newUser);
     
-    return res(
-      ctx.status(201),
-      ctx.json({
-        user: newUser,
-        message: 'Registration successful'
-      })
-    );
+    return HttpResponse.json({
+      user: newUser,
+      message: 'Registration successful'
+    }, { status: 201 });
   }),
 
-  rest.get(`${BASE}/auth/profile`, (req, res, ctx) => {
-    const authHeader = req.headers.get('Authorization');
+  http.get(`${BASE}/auth/profile`, ({ request }) => {
+    const authHeader = request.headers.get('Authorization');
     
     if (!authHeader || !authHeader.startsWith('Bearer ') || !mockAuthToken) {
-      return res(
-        ctx.status(401),
-        ctx.json({ message: 'Unauthorized' })
-      );
+      return HttpResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
     
-    return res(
-      ctx.status(200),
-      ctx.json({ user: currentUser })
-    );
+    return HttpResponse.json({ user: currentUser });
   }),
 
-  rest.post(`${BASE}/auth/logout`, (req, res, ctx) => {
+  http.post(`${BASE}/auth/logout`, () => {
     mockAuthToken = null;
     currentUser = null;
     
-    return res(
-      ctx.status(200),
-      ctx.json({ message: 'Logged out successfully' })
-    );
+    return HttpResponse.json({ message: 'Logged out successfully' });
   }),
 
   // Default User endpoints (tests may override using server.use)
-  rest.get(`${BASE}/users`, (req, res, ctx) => {
-    const url = new URL(req.url);
+  http.get(`${BASE}/users`, ({ request }) => {
+    const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page')) || 1;
     const limit = parseInt(url.searchParams.get('limit')) || 10;
     const role = url.searchParams.get('role');
@@ -221,15 +197,12 @@ export const handlers = [
       const startIndex = (page - 1) * limit;
       const endIndex = startIndex + limit;
       const paginated = mockStudentsList.slice(startIndex, endIndex);
-      return res(
-        ctx.status(200),
-        ctx.json({
-          users: paginated,
-          totalUsers: mockStudentsList.length,
-          totalPages: Math.ceil(mockStudentsList.length / limit),
-          currentPage: page
-        })
-      );
+      return HttpResponse.json({
+        users: paginated,
+        totalUsers: mockStudentsList.length,
+        totalPages: Math.ceil(mockStudentsList.length / limit),
+        currentPage: page
+      });
     }
 
     let filteredUsers = [...mockUsers];
@@ -240,60 +213,45 @@ export const handlers = [
     const endIndex = startIndex + limit;
     const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
 
-    return res(
-      ctx.status(200),
-      ctx.json({
-        users: paginatedUsers,
-        totalUsers: filteredUsers.length,
-        totalPages: Math.ceil(filteredUsers.length / limit),
-        currentPage: page
-      })
-    );
+    return HttpResponse.json({
+      users: paginatedUsers,
+      totalUsers: filteredUsers.length,
+      totalPages: Math.ceil(filteredUsers.length / limit),
+      currentPage: page
+    });
   }),
 
-  rest.get(`${BASE}/users/:id`, (req, res, ctx) => {
-    const { id } = req.params;
+  http.get(`${BASE}/users/:id`, ({ params }) => {
+    const { id } = params;
     const user = mockUsers.find(u => u.id === parseInt(id));
     
     if (!user) {
-      return res(
-        ctx.status(404),
-        ctx.json({ message: 'User not found' })
-      );
+      return HttpResponse.json({ message: 'User not found' }, { status: 404 });
     }
     
-    return res(
-      ctx.status(200),
-      ctx.json({ user })
-    );
+    return HttpResponse.json({ user });
   }),
 
-  rest.put(`${BASE}/users/:id`, (req, res, ctx) => {
-    const { id } = req.params;
-    const updates = req.body;
+  http.put(`${BASE}/users/:id`, async ({ params, request }) => {
+    const { id } = params;
+    const updates = await request.json();
     const userIndex = mockUsers.findIndex(u => u.id === parseInt(id));
     
     if (userIndex === -1) {
-      return res(
-        ctx.status(404),
-        ctx.json({ message: 'User not found' })
-      );
+      return HttpResponse.json({ message: 'User not found' }, { status: 404 });
     }
     
     mockUsers[userIndex] = { ...mockUsers[userIndex], ...updates };
     
-    return res(
-      ctx.status(200),
-      ctx.json({
-        user: mockUsers[userIndex],
-        message: 'User updated successfully'
-      })
-    );
+    return HttpResponse.json({
+      user: mockUsers[userIndex],
+      message: 'User updated successfully'
+    });
   }),
 
   // Event endpoints
-  rest.get(`${BASE}/events`, (req, res, ctx) => {
-    const url = new URL(req.url);
+  http.get(`${BASE}/events`, ({ request }) => {
+    const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page')) || 1;
     const limit = parseInt(url.searchParams.get('limit')) || 10;
     const type = url.searchParams.get('type');
@@ -308,19 +266,16 @@ export const handlers = [
     const endIndex = startIndex + limit;
     const paginatedEvents = filteredEvents.slice(startIndex, endIndex);
     
-    return res(
-      ctx.status(200),
-      ctx.json({
-        events: paginatedEvents,
-        totalEvents: filteredEvents.length,
-        totalPages: Math.ceil(filteredEvents.length / limit),
-        currentPage: page
-      })
-    );
+    return HttpResponse.json({
+      events: paginatedEvents,
+      totalEvents: filteredEvents.length,
+      totalPages: Math.ceil(filteredEvents.length / limit),
+      currentPage: page
+    });
   }),
 
-  rest.post(`${BASE}/events`, (req, res, ctx) => {
-    const eventData = req.body;
+  http.post(`${BASE}/events`, async ({ request }) => {
+    const eventData = await request.json();
     
     const newEvent = {
       id: mockEvents.length + 1,
@@ -331,78 +286,57 @@ export const handlers = [
     
     mockEvents.push(newEvent);
     
-    return res(
-      ctx.status(201),
-      ctx.json({
-        event: newEvent,
-        message: 'Event created successfully'
-      })
-    );
+    return HttpResponse.json({
+      event: newEvent,
+      message: 'Event created successfully'
+    }, { status: 201 });
   }),
 
   // Default: GET /events/:id (tests may override per-case using server.use)
-  rest.get(`${BASE}/events/:id`, (req, res, ctx) => {
-    const { id } = req.params;
+  http.get(`${BASE}/events/:id`, ({ params }) => {
+    const { id } = params;
     const event = mockEvents.find(e => e.id === parseInt(id));
 
     if (!event) {
-      return res(
-        ctx.status(404),
-        ctx.json({ message: 'Event not found' })
-      );
+      return HttpResponse.json({ message: 'Event not found' }, { status: 404 });
     }
 
-    return res(
-      ctx.status(200),
-      ctx.json({ event })
-    );
+    return HttpResponse.json({ event });
   }),
 
-  rest.put(`${BASE}/events/:id`, (req, res, ctx) => {
-    const { id } = req.params;
-    const updates = req.body;
+  http.put(`${BASE}/events/:id`, async ({ params, request }) => {
+    const { id } = params;
+    const updates = await request.json();
     const eventIndex = mockEvents.findIndex(e => e.id === parseInt(id));
     
     if (eventIndex === -1) {
-      return res(
-        ctx.status(404),
-        ctx.json({ message: 'Event not found' })
-      );
+      return HttpResponse.json({ message: 'Event not found' }, { status: 404 });
     }
     
     mockEvents[eventIndex] = { ...mockEvents[eventIndex], ...updates };
     
-    return res(
-      ctx.status(200),
-      ctx.json({
-        event: mockEvents[eventIndex],
-        message: 'Event updated successfully'
-      })
-    );
+    return HttpResponse.json({
+      event: mockEvents[eventIndex],
+      message: 'Event updated successfully'
+    });
   }),
 
-  rest.delete(`${BASE}/events/:id`, (req, res, ctx) => {
-    const { id } = req.params;
+  http.delete(`${BASE}/events/:id`, ({ params }) => {
+    const { id } = params;
     const eventIndex = mockEvents.findIndex(e => e.id === parseInt(id));
     
     if (eventIndex === -1) {
-      return res(
-        ctx.status(404),
-        ctx.json({ message: 'Event not found' })
-      );
+      return HttpResponse.json({ message: 'Event not found' }, { status: 404 });
     }
     
     mockEvents.splice(eventIndex, 1);
     
-    return res(
-      ctx.status(200),
-      ctx.json({ message: 'Event deleted successfully' })
-    );
+    return HttpResponse.json({ message: 'Event deleted successfully' });
   }),
 
   // Attendance endpoints
-  rest.get(`${BASE}/attendance`, (req, res, ctx) => {
-    const url = new URL(req.url);
+  http.get(`${BASE}/attendance`, ({ request }) => {
+    const url = new URL(request.url);
     const eventId = url.searchParams.get('eventId');
     const userId = url.searchParams.get('userId');
 
@@ -410,11 +344,11 @@ export const handlers = [
     if (eventId) filtered = filtered.filter(a => a.eventId === parseInt(eventId));
     if (userId) filtered = filtered.filter(a => a.userId === parseInt(userId));
 
-    return res(ctx.status(200), ctx.json({ attendance: filtered }));
+    return HttpResponse.json({ attendance: filtered });
   }),
 
-  rest.post(`${BASE}/attendance`, (req, res, ctx) => {
-    const attendanceData = req.body;
+  http.post(`${BASE}/attendance`, async ({ request }) => {
+    const attendanceData = await request.json();
     
     const newAttendance = {
       id: mockAttendance.length + 1,
@@ -425,41 +359,32 @@ export const handlers = [
     
     mockAttendance.push(newAttendance);
     
-    return res(
-      ctx.status(201),
-      ctx.json({
-        attendance: newAttendance,
-        message: 'Attendance marked successfully'
-      })
-    );
+    return HttpResponse.json({
+      attendance: newAttendance,
+      message: 'Attendance marked successfully'
+    }, { status: 201 });
   }),
 
-  rest.put(`${BASE}/attendance/:id`, (req, res, ctx) => {
-    const { id } = req.params;
-    const updates = req.body;
+  http.put(`${BASE}/attendance/:id`, async ({ params, request }) => {
+    const { id } = params;
+    const updates = await request.json();
     const attendanceIndex = mockAttendance.findIndex(a => a.id === parseInt(id));
     
     if (attendanceIndex === -1) {
-      return res(
-        ctx.status(404),
-        ctx.json({ message: 'Attendance record not found' })
-      );
+      return HttpResponse.json({ message: 'Attendance record not found' }, { status: 404 });
     }
     
     mockAttendance[attendanceIndex] = { ...mockAttendance[attendanceIndex], ...updates };
     
-    return res(
-      ctx.status(200),
-      ctx.json({
-        attendance: mockAttendance[attendanceIndex],
-        message: 'Attendance updated successfully'
-      })
-    );
+    return HttpResponse.json({
+      attendance: mockAttendance[attendanceIndex],
+      message: 'Attendance updated successfully'
+    });
   }),
 
   // Reports endpoints
-  rest.get(`${BASE}/reports/attendance`, (req, res, ctx) => {
-    const url = new URL(req.url);
+  http.get(`${BASE}/reports/attendance`, ({ request }) => {
+    const url = new URL(request.url);
     const startDate = url.searchParams.get('startDate');
     const endDate = url.searchParams.get('endDate');
     const eventId = url.searchParams.get('eventId');
@@ -486,29 +411,20 @@ export const handlers = [
       })
     };
     
-    return res(
-      ctx.status(200),
-      ctx.json(mockReport)
-    );
+    return HttpResponse.json(mockReport);
   }),
 
   // Error simulation endpoints for testing
-  rest.get(`${BASE}/error/500`, (req, res, ctx) => {
-    return res(
-      ctx.status(500),
-      ctx.json({ message: 'Internal server error' })
-    );
+  http.get(`${BASE}/error/500`, () => {
+    return HttpResponse.json({ message: 'Internal server error' }, { status: 500 });
   }),
 
-  rest.get(`${BASE}/error/404`, (req, res, ctx) => {
-    return res(
-      ctx.status(404),
-      ctx.json({ message: 'Resource not found' })
-    );
+  http.get(`${BASE}/error/404`, () => {
+    return HttpResponse.json({ message: 'Resource not found' }, { status: 404 });
   }),
 
-  rest.get(`${BASE}/error/timeout`, (req, res, ctx) => {
-    return res(ctx.delay(30000));
+  http.get(`${BASE}/error/timeout`, () => {
+    return HttpResponse.text('delayed', { delay: 30000 });
   }),
 
   // Note: No wildcard fallback handler here to allow test-specific overrides to take precedence

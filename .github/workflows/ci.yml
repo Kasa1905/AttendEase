@@ -28,7 +28,7 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm test -- --ci --passWithNoTests
+        run: npm test -- --ci --passWithNoTests --forceExit --detectOpenHandles
 
       - name: Build
         run: npm run build

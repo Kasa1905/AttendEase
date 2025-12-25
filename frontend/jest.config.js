@@ -2,8 +2,10 @@ module.exports = {
   testEnvironment: 'jsdom',
   setupFiles: ['<rootDir>/src/jestSetup.js'],
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.js'],
-  // Limit to a lightweight smoke test to keep CI green while broader suite is fixed
-  testMatch: ['<rootDir>/src/smoke.test.js'],
+  testMatch: [
+    '<rootDir>/src/**/*.test.{js,jsx}',
+    '<rootDir>/src/**/*.spec.{js,jsx}'
+  ],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '.*\\/config\\/env$': '<rootDir>/src/config/env.test.js',
@@ -15,9 +17,11 @@ module.exports = {
       presets: [
         ['@babel/preset-env', { targets: { node: 'current' } }],
         ['@babel/preset-react', { runtime: 'automatic' }]
-      ]
+      ],
+      plugins: ['@babel/plugin-syntax-import-meta', '@babel/plugin-transform-runtime']
     }]
   },
+  testPathIgnorePatterns: ['<rootDir>/src/config/env.test.js'],
   transformIgnorePatterns: [
     'node_modules/(?!(.*\\.mjs$|@testing-library|msw|@mswjs|until-async|@open-draft))'
   ],

@@ -1,8 +1,9 @@
 // Jest/test environment config
 const nodeEnv = process.env || {};
 
-// Core API and environment - align with MSW handlers that use '/api' paths
-export const API_BASE = '/api';
+// Core API and environment - use absolute base so axios Node adapter works reliably
+// MSW will match path '/api/*' regardless of host
+export const API_BASE = 'http://localhost:3001/api';
 export const ENV = nodeEnv.MODE || 'test';
 export const IS_PROD = ENV === 'production';
 

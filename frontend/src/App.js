@@ -83,9 +83,9 @@ export default function App() {
               </div>
             </div>
           </OfflineProvider>
+          <Toaster position="top-right" />
+          <NotificationToast />
         </SocketProvider>
-        <Toaster position="top-right" />
-        <NotificationToast />
       </AuthProvider>
     </BrowserRouter>
     </Sentry.ErrorBoundary>

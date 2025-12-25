@@ -52,3 +52,14 @@ if (!global.importMeta) {
     }
   };
 }
+
+// Make import.meta available like in Vite
+if (!globalThis.import) {
+  globalThis.import = { meta: global.importMeta };
+}
+if (!globalThis.import?.meta) {
+  globalThis.import.meta = global.importMeta;
+}
+if (!globalThis.importMeta) {
+  globalThis.importMeta = global.importMeta;
+}

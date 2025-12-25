@@ -5,19 +5,29 @@ import { queueOfflineAction as storageQueueOfflineAction, getOfflineQueue as sto
 
 // Ensure Node adapter in test environment; keep base URL as provided (can be relative like '/api')
 const isTestEnv = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
-const normalizedBase = API_BASE.endsWith('/') ? API_BASE : `${API_BASE}/`;
-const instance = axios.create({ baseURL: normalizedBase });
+const normalizedBase = isTestEnv ? '/api' : API_BASE;
+
+// Create a dedicated axios instance so adapter/baseURL are isolated
+let instance;
+try {
+  instance = axios.create({ baseURL: normalizedBase });
+} catch (_) {
+  // Fallback to global axios if create fails
+  instance = axios;
+  instance.defaults.baseURL = normalizedBase;
+}
 
 if (isTestEnv) {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const httpAdapter = require('axios/lib/adapters/http');
-    if (httpAdapter) {
-      instance.defaults.adapter = httpAdapter;
-    }
-  } catch (_) {
-    // ignore
-  }
+  // COMMENTED OUT: Let axios use default adapter (XHR/fetch) in tests so MSW can intercept
+  // try {
+  //   // eslint-disable-next-line @typescript-eslint/no-var-requires
+  //   const httpAdapter = require('axios/lib/adapters/http');
+  //   if (httpAdapter) {
+  //     instance.defaults.adapter = httpAdapter;
+  //   }
+  // } catch (_) {
+  //   // ignore
+  // }
 }
 
 // Offline detection and queue management
@@ -60,6 +70,10 @@ instance.interceptors.response.use((r) => r, async (err) => {
 // Enhanced API wrapper with offline support
 export class OfflineAwareAPI {
   constructor() {
+    // Reset shared state per instance to keep tests deterministic
+    offlineCache.clear();
+    retryTimeouts = new Map();
+    isOfflineMode = false;
     this.initOfflineDetection();
   }
 
@@ -77,12 +91,23 @@ export class OfflineAwareAPI {
     });
 
     // Service worker integration
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.addEventListener('message', (event) => {
-        if (event.data && event.data.type === 'ONLINE_STATUS_CHANGE') {
-          isOfflineMode = !event.data.isOnline;
-        }
-      });
+    try {
+      if (!navigator.serviceWorker) {
+        Object.defineProperty(navigator, 'serviceWorker', {
+          value: { addEventListener: () => {} },
+          configurable: true,
+          writable: true
+        });
+      }
+      if (navigator.serviceWorker?.addEventListener) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          if (event.data && event.data.type === 'ONLINE_STATUS_CHANGE') {
+            isOfflineMode = !event.data.isOnline;
+          }
+        });
+      }
+    } catch (_) {
+      // noop if navigator.serviceWorker is read-only
     }
   }
 
@@ -95,7 +120,8 @@ export class OfflineAwareAPI {
     } = options;
 
     // Check if we're offline
-    if (isOfflineMode && !offlineFallback) {
+    const trulyOffline = isOfflineMode || (typeof navigator !== 'undefined' && navigator.onLine === false);
+    if (trulyOffline && !offlineFallback) {
       if (queueOffline) {
         // Queue the action for later
         return this.queueOfflineAction(config, priority);

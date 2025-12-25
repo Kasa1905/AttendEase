@@ -1,8 +1,6 @@
 import React from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { rest } from 'msw';
-import { server } from '../mocks/server';
 import Login from '../../components/auth/Login';
 import { render, createMockUser } from '../utils/testUtils';
 import { API_BASE } from '../../config/env.test';
@@ -16,6 +14,8 @@ const mockAuthContext = {
 };
 
 jest.mock('../../contexts/AuthContext', () => ({
+  __esModule: true,
+  AuthProvider: ({ children }) => <>{children}</>,
   useAuth: () => mockAuthContext
 }));
 

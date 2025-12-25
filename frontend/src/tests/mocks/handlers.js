@@ -1,8 +1,6 @@
 import { http, HttpResponse } from 'msw';
-import { API_BASE } from '../../config/env';
-// Use plain path base so test-specific server.use("/api/…") handlers override predictably
-const BASE_RAW = API_BASE || '/api';
-const BASE = BASE_RAW.startsWith('/') ? BASE_RAW : `/${BASE_RAW}`;
+// Use plain path base to match axios test base ('/api')
+const BASE = '/api';
 
 // Mock user data
 const mockUsers = [
@@ -345,6 +343,22 @@ export const handlers = [
     if (userId) filtered = filtered.filter(a => a.userId === parseInt(userId));
 
     return HttpResponse.json({ attendance: filtered });
+  }),
+
+  // Attendance by date
+  http.get(`${BASE}/attendance/date/:date`, ({ params }) => {
+    const { date } = params;
+    const filtered = mockAttendance.filter(a => (a.date || a.checkInTime || '').startsWith(date));
+    return HttpResponse.json(filtered);
+  }),
+
+  // Strike statistics
+  http.get(`${BASE}/strikes/statistics`, () => {
+    return HttpResponse.json({
+      total: 0,
+      active: 0,
+      resolved: 0
+    });
   }),
 
   http.post(`${BASE}/attendance`, async ({ request }) => {

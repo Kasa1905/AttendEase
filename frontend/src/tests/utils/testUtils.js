@@ -1,8 +1,10 @@
 import React from 'react';
 import { render as rtlRender, screen, waitFor } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import { AuthProvider } from '../../contexts/AuthContext';
 import { ThemeProvider } from '../../contexts/ThemeContext';
+import { SocketProvider } from '../../contexts/SocketContext';
+import { OfflineProvider } from '../../contexts/OfflineContext';
 
 // Custom render function that includes providers
 function render(ui, {
@@ -21,7 +23,11 @@ function render(ui, {
     register: jest.fn(),
     updateProfile: jest.fn(),
     loading: false,
-    error: null
+    error: null,
+    hasRole: (r) => !!authUser && authUser.role?.toLowerCase() === r.toLowerCase(),
+    isStudent: () => !!authUser && authUser.role?.toLowerCase() === 'student',
+    isTeacher: () => !!authUser && authUser.role?.toLowerCase() === 'teacher',
+    isCoreTeam: () => !!authUser && authUser.role?.toLowerCase() === 'core_team'
   };
 
   // Mock ThemeContext value
@@ -33,13 +39,17 @@ function render(ui, {
 
   function Wrapper({ children }) {
     return (
-      <BrowserRouter>
+      <MemoryRouter initialEntries={initialEntries}>
         <ThemeProvider value={mockThemeValue}>
           <AuthProvider value={mockAuthValue}>
-            {children}
+            <SocketProvider>
+              <OfflineProvider>
+                {children}
+              </OfflineProvider>
+            </SocketProvider>
           </AuthProvider>
         </ThemeProvider>
-      </BrowserRouter>
+      </MemoryRouter>
     );
   }
 
@@ -76,11 +86,15 @@ function renderWithRouter(ui, {
 
   function Wrapper({ children }) {
     return (
-      <BrowserRouter initialEntries={initialEntries}>
+      <MemoryRouter initialEntries={initialEntries}>
         <AuthProvider value={mockAuthValue}>
-          {children}
+          <SocketProvider>
+            <OfflineProvider>
+              {children}
+            </OfflineProvider>
+          </SocketProvider>
         </AuthProvider>
-      </BrowserRouter>
+      </MemoryRouter>
     );
   }
 

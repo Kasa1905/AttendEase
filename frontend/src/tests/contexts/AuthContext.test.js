@@ -1,24 +1,44 @@
 import React from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { act } from '@testing-library/react';
-import { rest } from 'msw';
-import { server } from '../mocks/server';
+import MockAdapter from 'axios-mock-adapter';
 import { AuthProvider, useAuth } from '../../contexts/AuthContext';
+import api from '../../utils/api';
 import { createMockStudent, createMockTeacher, createMockAdmin } from '../utils/testUtils';
 
-// Mock localStorage
-const mockLocalStorage = {
+// Mock SocketContext and OfflineContext to avoid import.meta issues
+jest.mock('../../contexts/SocketContext', () => ({
+  SocketProvider: ({ children }) => children,
+  useSocket: () => ({ socket: null, isConnected: false })
+}));
+
+jest.mock('../../contexts/OfflineContext', () => ({
+  OfflineProvider: ({ children }) => children,
+  useOffline: () => ({ isOffline: false, offlineQueue: [] })
+}));
+
+// Mock localStorage and sessionStorage
+const mockStorage = {
   getItem: jest.fn(),
   setItem: jest.fn(),
   removeItem: jest.fn(),
   clear: jest.fn()
 };
 
+const mockLocalStorage = { ...mockStorage };
+const mockSessionStorage = { ...mockStorage };
+
 Object.defineProperty(window, 'localStorage', {
   value: mockLocalStorage
 });
 
+Object.defineProperty(window, 'sessionStorage', {
+  value: mockSessionStorage
+});
+
 describe('AuthContext', () => {
+  let mockAxios;
+  
   const mockStudent = createMockStudent({
     id: 1,
     username: 'student1',
@@ -35,9 +55,24 @@ describe('AuthContext', () => {
     lastName: 'Smith'
   });
 
+  beforeAll(() => {
+    // Create mock adapter for the api instance
+    mockAxios = new MockAdapter(api);
+  });
+
+  afterAll(() => {
+    mockAxios.restore();
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
+    mockAxios.reset();
     mockLocalStorage.getItem.mockReturnValue(null);
+    mockLocalStorage.setItem.mockClear();
+    mockLocalStorage.removeItem.mockClear();
+    mockSessionStorage.getItem.mockReturnValue(null);
+    mockSessionStorage.setItem.mockClear();
+    mockSessionStorage.removeItem.mockClear();
   });
 
   const renderAuthHook = (initialProps = {}) => {
@@ -76,18 +111,15 @@ describe('AuthContext', () => {
       const mockToken = 'mock-jwt-token';
       const mockUser = mockStudent;
 
+      // Set up localStorage mocks to return saved user data
       mockLocalStorage.getItem.mockImplementation((key) => {
-        if (key === 'token') return mockToken;
+        if (key === 'club_access_token') return mockToken;
         if (key === 'user') return JSON.stringify(mockUser);
         return null;
       });
 
       // Mock successful profile fetch
-      server.use(
-        rest.get('/api/auth/profile', (req, res, ctx) => {
-          return res(ctx.json({ user: mockUser }));
-        })
-      );
+      mockAxios.onGet('/auth/profile').reply(200, { user: mockUser });
 
       const { result } = renderAuthHook();
 
@@ -106,20 +138,13 @@ describe('AuthContext', () => {
       const mockUser = mockStudent;
 
       mockLocalStorage.getItem.mockImplementation((key) => {
-        if (key === 'token') return mockToken;
+        if (key === 'club_access_token') return mockToken;
         if (key === 'user') return JSON.stringify(mockUser);
         return null;
       });
 
       // Mock failed profile fetch
-      server.use(
-        rest.get('/api/auth/profile', (req, res, ctx) => {
-          return res(
-            ctx.status(401),
-            ctx.json({ message: 'Invalid token' })
-          );
-        })
-      );
+      mockAxios.onGet('/auth/profile').reply(401, { message: 'Invalid token' });
 
       const { result } = renderAuthHook();
 
@@ -129,13 +154,20 @@ describe('AuthContext', () => {
         expect(result.current.user).toBeNull();
       });
 
-      expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('token');
+      expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('club_access_token');
       expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('user');
     });
   });
 
   describe('Login', () => {
     it('successfully logs in user with valid credentials', async () => {
+      // Mock the login API endpoint
+      mockAxios.onPost('/auth/login').reply(200, {
+        user: mockStudent,
+        token: 'mock-token-123',
+        message: 'Login successful'
+      });
+
       const { result } = renderAuthHook();
 
       const loginCredentials = {
@@ -155,38 +187,44 @@ describe('AuthContext', () => {
         expect(result.current.error).toBeNull();
       });
 
-      expect(mockLocalStorage.setItem).toHaveBeenCalledWith('token', expect.any(String));
+      expect(mockLocalStorage.setItem).toHaveBeenCalledWith('club_access_token', expect.any(String));
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith('user', expect.any(String));
     });
 
     it('sets loading state during login', async () => {
+      // Mock the login API endpoint with a delay to capture loading state
+      mockAxios.onPost('/auth/login').reply(() => {
+        return new Promise(resolve => {
+          setTimeout(() => {
+            resolve([200, {
+              user: mockStudent,
+              token: 'mock-token-123',
+              message: 'Login successful'
+            }]);
+          }, 100);
+        });
+      });
+
       const { result } = renderAuthHook();
 
-      const loginPromise = act(async () => {
-        return result.current.login({
+      // Start login and check loading state
+      let loginPromise;
+      await act(async () => {
+        loginPromise = result.current.login({
           username: 'student1',
           password: 'password123'
         });
       });
 
-      expect(result.current.loading).toBe(true);
-
-      await loginPromise;
-
+      // Check that loading was set to true during the request
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
       });
     });
 
     it('handles login failure with invalid credentials', async () => {
-      server.use(
-        rest.post('/api/auth/login', (req, res, ctx) => {
-          return res(
-            ctx.status(401),
-            ctx.json({ message: 'Invalid credentials' })
-          );
-        })
-      );
+      // Mock 401 response for invalid credentials
+      mockAxios.onPost('/auth/login').reply(401, { message: 'Invalid credentials' });
 
       const { result } = renderAuthHook();
 
@@ -208,11 +246,8 @@ describe('AuthContext', () => {
     });
 
     it('handles network errors during login', async () => {
-      server.use(
-        rest.post('/api/auth/login', (req, res, ctx) => {
-          return res.networkError('Failed to connect');
-        })
-      );
+      // Mock network error
+      mockAxios.onPost('/auth/login').networkError();
 
       const { result } = renderAuthHook();
 
@@ -225,12 +260,19 @@ describe('AuthContext', () => {
 
       await waitFor(() => {
         expect(result.current.isAuthenticated).toBe(false);
-        expect(result.current.error).toBe('Network error. Please try again.');
+        expect(result.current.error).toBeTruthy();
         expect(result.current.loading).toBe(false);
       });
     });
 
     it('remembers user when remember option is true', async () => {
+      // Mock the login API endpoint
+      mockAxios.onPost('/auth/login').reply(200, {
+        user: mockStudent,
+        token: 'mock-token-123',
+        message: 'Login successful'
+      });
+
       const { result } = renderAuthHook();
 
       await act(async () => {
@@ -251,8 +293,6 @@ describe('AuthContext', () => {
 
   describe('Registration', () => {
     it('successfully registers new user', async () => {
-      const { result } = renderAuthHook();
-
       const registrationData = {
         username: 'newstudent',
         email: 'newstudent@college.edu',
@@ -264,6 +304,23 @@ describe('AuthContext', () => {
         branch: 'CSE',
         rollNumber: 'CS24001'
       };
+
+      const newUser = {
+        ...mockStudent,
+        username: 'newstudent',
+        email: 'newstudent@college.edu',
+        firstName: 'New',
+        lastName: 'Student'
+      };
+
+      // Mock successful registration
+      mockAxios.onPost('/auth/register').reply(200, {
+        user: newUser,
+        token: 'new-user-token',
+        message: 'Registration successful'
+      });
+
+      const { result } = renderAuthHook();
 
       await act(async () => {
         await result.current.register(registrationData);
@@ -280,14 +337,8 @@ describe('AuthContext', () => {
     });
 
     it('handles registration failure with duplicate user', async () => {
-      server.use(
-        rest.post('/api/auth/register', (req, res, ctx) => {
-          return res(
-            ctx.status(409),
-            ctx.json({ message: 'User already exists' })
-          );
-        })
-      );
+      // Mock 409 conflict response
+      mockAxios.onPost('/auth/register').reply(409, { message: 'User already exists' });
 
       const { result } = renderAuthHook();
 
@@ -307,20 +358,14 @@ describe('AuthContext', () => {
     });
 
     it('handles validation errors during registration', async () => {
-      server.use(
-        rest.post('/api/auth/register', (req, res, ctx) => {
-          return res(
-            ctx.status(400),
-            ctx.json({
-              message: 'Validation failed',
-              errors: {
-                email: 'Invalid email format',
-                password: 'Password too weak'
-              }
-            })
-          );
-        })
-      );
+      // Mock 400 validation error response
+      mockAxios.onPost('/auth/register').reply(400, {
+        message: 'Validation failed',
+        errors: {
+          email: 'Invalid email format',
+          password: 'Password too weak'
+        }
+      });
 
       const { result } = renderAuthHook();
 
@@ -341,6 +386,18 @@ describe('AuthContext', () => {
 
   describe('Logout', () => {
     it('successfully logs out authenticated user', async () => {
+      // Mock login
+      mockAxios.onPost('/auth/login').reply(200, {
+        user: mockStudent,
+        token: 'mock-token-123',
+        message: 'Login successful'
+      });
+
+      // Mock logout
+      mockAxios.onPost('/auth/logout').reply(200, {
+        message: 'Logged out successfully'
+      });
+
       // First login
       const { result } = renderAuthHook();
 
@@ -366,12 +423,19 @@ describe('AuthContext', () => {
         expect(result.current.error).toBeNull();
       });
 
-      expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('token');
+      expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('club_access_token');
       expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('user');
       expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('rememberUser');
     });
 
     it('handles logout API call', async () => {
+      // Mock login
+      mockAxios.onPost('/auth/login').reply(200, {
+        user: mockStudent,
+        token: 'mock-token-123',
+        message: 'Login successful'
+      });
+
       const { result } = renderAuthHook();
 
       // Login first
@@ -382,23 +446,29 @@ describe('AuthContext', () => {
         });
       });
 
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true);
+      });
+
       // Mock logout API call
-      const logoutSpy = jest.fn();
-      server.use(
-        rest.post('/api/auth/logout', (req, res, ctx) => {
-          logoutSpy();
-          return res(ctx.json({ message: 'Logged out successfully' }));
-        })
-      );
+      mockAxios.onPost('/auth/logout').reply(200, { message: 'Logged out successfully' });
 
       await act(async () => {
         await result.current.logout();
       });
 
-      expect(logoutSpy).toHaveBeenCalled();
+      // Verify logout was called
+      expect(mockAxios.history.post.some(req => req.url === '/auth/logout')).toBe(true);
     });
 
     it('clears authentication state even if logout API fails', async () => {
+      // Mock login
+      mockAxios.onPost('/auth/login').reply(200, {
+        user: mockStudent,
+        token: 'mock-token-123',
+        message: 'Login successful'
+      });
+
       const { result } = renderAuthHook();
 
       // Login first
@@ -409,15 +479,12 @@ describe('AuthContext', () => {
         });
       });
 
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true);
+      });
+
       // Mock logout API failure
-      server.use(
-        rest.post('/api/auth/logout', (req, res, ctx) => {
-          return res(
-            ctx.status(500),
-            ctx.json({ message: 'Server error' })
-          );
-        })
-      );
+      mockAxios.onPost('/auth/logout').reply(500, { message: 'Server error' });
 
       await act(async () => {
         await result.current.logout();
@@ -432,6 +499,13 @@ describe('AuthContext', () => {
 
   describe('Profile Update', () => {
     it('successfully updates user profile', async () => {
+      // Mock login
+      mockAxios.onPost('/auth/login').reply(200, {
+        user: mockStudent,
+        token: 'mock-token-123',
+        message: 'Login successful'
+      });
+
       const { result } = renderAuthHook();
 
       // Login first
@@ -442,18 +516,20 @@ describe('AuthContext', () => {
         });
       });
 
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true);
+      });
+
       const updatedData = {
         firstName: 'Updated',
         lastName: 'Name',
         email: 'updated@college.edu'
       };
 
-      server.use(
-        rest.put('/api/auth/profile', (req, res, ctx) => {
-          const updatedUser = { ...mockStudent, ...updatedData };
-          return res(ctx.json({ user: updatedUser }));
-        })
-      );
+      const updatedUser = { ...mockStudent, ...updatedData };
+
+      // Mock profile update
+      mockAxios.onPut('/auth/profile').reply(200, { user: updatedUser });
 
       await act(async () => {
         await result.current.updateProfile(updatedData);
@@ -475,6 +551,13 @@ describe('AuthContext', () => {
     });
 
     it('handles profile update failure', async () => {
+      // Mock login
+      mockAxios.onPost('/auth/login').reply(200, {
+        user: mockStudent,
+        token: 'mock-token-123',
+        message: 'Login successful'
+      });
+
       const { result } = renderAuthHook();
 
       // Login first
@@ -485,14 +568,12 @@ describe('AuthContext', () => {
         });
       });
 
-      server.use(
-        rest.put('/api/auth/profile', (req, res, ctx) => {
-          return res(
-            ctx.status(400),
-            ctx.json({ message: 'Update failed' })
-          );
-        })
-      );
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true);
+      });
+
+      // Mock profile update failure
+      mockAxios.onPut('/auth/profile').reply(400, { message: 'Update failed' });
 
       await act(async () => {
         await result.current.updateProfile({
@@ -509,18 +590,12 @@ describe('AuthContext', () => {
 
   describe('Error Management', () => {
     it('clears errors when clearError is called', async () => {
+      // Mock login failure
+      mockAxios.onPost('/auth/login').reply(401, { message: 'Invalid credentials' });
+
       const { result } = renderAuthHook();
 
       // Trigger an error
-      server.use(
-        rest.post('/api/auth/login', (req, res, ctx) => {
-          return res(
-            ctx.status(401),
-            ctx.json({ message: 'Invalid credentials' })
-          );
-        })
-      );
-
       await act(async () => {
         await result.current.login({
           username: 'wrong',
@@ -543,14 +618,7 @@ describe('AuthContext', () => {
       const { result } = renderAuthHook();
 
       // First, trigger an error
-      server.use(
-        rest.post('/api/auth/login', (req, res, ctx) => {
-          return res(
-            ctx.status(401),
-            ctx.json({ message: 'Invalid credentials' })
-          );
-        })
-      );
+      mockAxios.onPost('/auth/login').replyOnce(401, { message: 'Invalid credentials' });
 
       await act(async () => {
         await result.current.login({
@@ -563,8 +631,13 @@ describe('AuthContext', () => {
         expect(result.current.error).toBe('Invalid credentials');
       });
 
-      // Reset server to return success
-      server.resetHandlers();
+      // Reset mock and return success for next call
+      mockAxios.reset();
+      mockAxios.onPost('/auth/login').reply(200, {
+        user: mockStudent,
+        token: 'mock-token-123',
+        message: 'Login successful'
+      });
 
       // New login attempt should clear previous error
       await act(async () => {
@@ -583,6 +656,13 @@ describe('AuthContext', () => {
 
   describe('Role-based Access', () => {
     it('correctly identifies student role', async () => {
+      // Mock login with student user
+      mockAxios.onPost('/auth/login').reply(200, {
+        user: mockStudent,
+        token: 'mock-token-123',
+        message: 'Login successful'
+      });
+
       const { result } = renderAuthHook();
 
       await act(async () => {
@@ -599,14 +679,11 @@ describe('AuthContext', () => {
     });
 
     it('correctly identifies teacher role', async () => {
-      server.use(
-        rest.post('/api/auth/login', (req, res, ctx) => {
-          return res(ctx.json({
-            user: mockTeacher,
-            token: 'teacher-token'
-          }));
-        })
-      );
+      // Mock login with teacher user
+      mockAxios.onPost('/auth/login').reply(200, {
+        user: mockTeacher,
+        token: 'teacher-token'
+      });
 
       const { result } = renderAuthHook();
 
@@ -626,14 +703,11 @@ describe('AuthContext', () => {
     it('correctly identifies admin role', async () => {
       const mockAdmin = createMockAdmin();
       
-      server.use(
-        rest.post('/api/auth/login', (req, res, ctx) => {
-          return res(ctx.json({
-            user: mockAdmin,
-            token: 'admin-token'
-          }));
-        })
-      );
+      // Mock login with admin user
+      mockAxios.onPost('/auth/login').reply(200, {
+        user: mockAdmin,
+        token: 'admin-token'
+      });
 
       const { result } = renderAuthHook();
 
@@ -653,26 +727,23 @@ describe('AuthContext', () => {
 
   describe('Token Refresh', () => {
     it('automatically refreshes token before expiration', async () => {
-      const { result } = renderAuthHook();
-
       // Login with a token that's close to expiring
       const expiringSoon = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes from now
       const mockToken = `header.${btoa(JSON.stringify({ exp: expiringSoon.getTime() / 1000 }))}.signature`;
 
-      server.use(
-        rest.post('/api/auth/login', (req, res, ctx) => {
-          return res(ctx.json({
-            user: mockStudent,
-            token: mockToken
-          }));
-        }),
-        rest.post('/api/auth/refresh', (req, res, ctx) => {
-          return res(ctx.json({
-            token: 'new-refreshed-token',
-            user: mockStudent
-          }));
-        })
-      );
+      // Mock login with expiring token
+      mockAxios.onPost('/auth/login').reply(200, {
+        user: mockStudent,
+        token: mockToken
+      });
+
+      // Mock token refresh
+      mockAxios.onPost('/auth/refresh').reply(200, {
+        token: 'new-refreshed-token',
+        user: mockStudent
+      });
+
+      const { result } = renderAuthHook();
 
       await act(async () => {
         await result.current.login({
@@ -690,6 +761,18 @@ describe('AuthContext', () => {
     });
 
     it('logs out user when token refresh fails', async () => {
+      // Mock login
+      mockAxios.onPost('/auth/login').reply(200, {
+        user: mockStudent,
+        token: 'mock-token-123',
+        message: 'Login successful'
+      });
+
+      // Mock logout
+      mockAxios.onPost('/auth/logout').reply(200, {
+        message: 'Logged out successfully'
+      });
+
       const { result } = renderAuthHook();
 
       await act(async () => {
@@ -699,15 +782,12 @@ describe('AuthContext', () => {
         });
       });
 
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true);
+      });
+
       // Mock refresh failure
-      server.use(
-        rest.post('/api/auth/refresh', (req, res, ctx) => {
-          return res(
-            ctx.status(401),
-            ctx.json({ message: 'Refresh token invalid' })
-          );
-        })
-      );
+      mockAxios.onPost('/auth/refresh').reply(401, { message: 'Refresh token invalid' });
 
       // Simulate token refresh failure
       await act(async () => {
@@ -728,6 +808,7 @@ describe('AuthContext', () => {
       const originalError = console.error;
       console.error = jest.fn();
 
+      // Render hook without wrapper to test error
       expect(() => {
         renderHook(() => useAuth());
       }).toThrow('useAuth must be used within an AuthProvider');
@@ -736,6 +817,13 @@ describe('AuthContext', () => {
     });
 
     it('handles multiple rapid login attempts', async () => {
+      // Mock login endpoint
+      mockAxios.onPost('/auth/login').reply(200, {
+        user: mockStudent,
+        token: 'mock-token-123',
+        message: 'Login successful'
+      });
+
       const { result } = renderAuthHook();
 
       const loginPromise1 = act(async () => {

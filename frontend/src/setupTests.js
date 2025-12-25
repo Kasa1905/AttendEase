@@ -4,17 +4,46 @@ import { configure } from '@testing-library/react';
 import 'whatwg-fetch';
 import axios from 'axios';
 
+// Mock SocketContext and OfflineContext BEFORE any other imports to avoid import.meta syntax errors
+jest.mock('./contexts/SocketContext', () => ({
+  SocketProvider: ({ children }) => children,
+  useSocket: () => ({ socket: null, isConnected: false })
+}));
+
+jest.mock('./contexts/OfflineContext', () => ({
+  OfflineProvider: ({ children }) => children,
+  useOffline: () => ({ isOffline: false, offlineQueue: [] })
+}));
+
+// Mock Sentry to disable ErrorBoundary and side effects during tests
+jest.mock('@sentry/react', () => {
+  const React = require('react');
+  return {
+    __esModule: true,
+    init: jest.fn(),
+    ErrorBoundary: ({ children }) => children,
+    withErrorBoundary: (component) => component,
+    captureException: jest.fn(),
+    captureMessage: jest.fn(),
+    setUser: jest.fn(),
+    addBreadcrumb: jest.fn(),
+    startSpan: jest.fn(() => ({ finish: jest.fn() })),
+    browserTracingIntegration: jest.fn(),
+  };
+});
+
 // Force axios to use the Node HTTP adapter so MSW (setupServer) can intercept requests in Jest
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const httpAdapter = require('axios/lib/adapters/http');
-  if (httpAdapter) {
-    // axios v1 exports a function as default
-    axios.defaults.adapter = httpAdapter;
-  }
-} catch (e) {
-  // Fallback: leave default adapter
-}
+// COMMENTED OUT: The Node HTTP adapter bypasses MSW interception. Using default adapter instead.
+// try {
+//   // eslint-disable-next-line @typescript-eslint/no-var-requires
+//   const httpAdapter = require('axios/lib/adapters/http');
+//   if (httpAdapter) {
+//     // axios v1 exports a function as default
+//     axios.defaults.adapter = httpAdapter;
+//   }
+// } catch (e) {
+//   // Fallback: leave default adapter
+// }
 
 // Configure testing library
 configure({ testIdAttribute: 'data-testid' });
@@ -80,18 +109,16 @@ HTMLCanvasElement.prototype.getContext = jest.fn();
 global.fetch = jest.fn();
 
 // Setup MSW (Mock Service Worker)
-// Disabled temporarily due to MSW 2.x migration issues
-// import { server } from './tests/mocks/server';
+import { server } from './tests/mocks/server';
 
 // Establish API mocking before all tests
 beforeAll(() => {
-  // MSW server setup disabled
-  // server.listen({ onUnhandledRequest: 'bypass' });
+  server.listen({ onUnhandledRequest: 'bypass' });
 });
 
 // Reset any request handlers that we may add during the tests
 afterEach(() => {
-  // server.resetHandlers();
+  server.resetHandlers();
   jest.clearAllMocks();
   localStorage.clear();
   sessionStorage.clear();
@@ -99,7 +126,7 @@ afterEach(() => {
 
 // Clean up after the tests are finished
 afterAll(() => {
-  // server.close();
+  server.close();
 });
 
 // Custom matchers
@@ -109,6 +136,13 @@ expect.extend({
     return {
       pass,
       message: () => `Expected element ${pass ? 'not ' : ''}to be in the DOM`
+    };
+  },
+  toBeTypeOf(received, expected) {
+    const pass = typeof received === expected;
+    return {
+      pass,
+      message: () => `Expected ${received} to be of type ${expected}`
     };
   }
 });

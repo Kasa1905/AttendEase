@@ -108,17 +108,18 @@ HTMLCanvasElement.prototype.getContext = jest.fn();
 // Mock fetch globally
 global.fetch = jest.fn();
 
-// Setup MSW (Mock Service Worker)
-import { server } from './tests/mocks/server';
+// Setup MSW (Mock Service Worker) - DISABLED
+// MSW is not used in tests; axios-mock-adapter is used instead
+// import { server } from './tests/mocks/server';
 
 // Establish API mocking before all tests
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'bypass' });
+  // server.listen({ onUnhandledRequest: 'bypass' }); // MSW disabled - using axios-mock-adapter instead
 });
 
 // Reset any request handlers that we may add during the tests
 afterEach(() => {
-  server.resetHandlers();
+  // server.resetHandlers(); // MSW disabled
   jest.clearAllMocks();
   localStorage.clear();
   sessionStorage.clear();
@@ -126,7 +127,7 @@ afterEach(() => {
 
 // Clean up after the tests are finished
 afterAll(() => {
-  server.close();
+  // server.close(); // MSW disabled
 });
 
 // Custom matchers
